@@ -1,0 +1,227 @@
+---
+title: "Z score filtering"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Calling for packages 
+```{r}
+library(tidyverse)
+library(janitor)
+library(ggplot2)
+library(plotly)
+library(RColorBrewer)
+source("http://peterhaschke.com/Code/multiplot.R")
+library("viridis")  
+library(readxl)
+library(GGally)
+library(dplyr)
+library(conflicted)
+library(raster)
+library(plot.matrix)
+library(lattice)
+library(reshape2)
+library(dendextend)
+library(circlize)
+library(ComplexHeatmap)
+library("d3heatmap")
+library("pheatmap")
+library("ggthemes")
+library(grid)
+library("gridExtra")
+library(ggpubr)
+library(janitor)
+library(rlang)
+library("EnvStats")
+library(areaplot)
+library(colorspace)
+library(formattable)
+library(remotes)
+library(M3C)
+library(Rtsne)
+```
+```{r}
+Z_filtering <- function(dataset, start,end, i){
+    Z_matrix <- apply(dataset[ ,start:end], 2, function(x) (x - mean(x)) / sd(x)) %>% raster::as.data.frame()
+    
+    Z_matrix <- cbind(dataset[,1:start-1], Z_matrix) ## NOTE Negative probes WAS NOT CONVERTED TO Z
+    hist(unlist(Z_matrix[ ,start:end]), ylab = "Frequency", col="#fde0dd", xlab="Zscore value",main=paste0("Z score distribution for ", i), breaks = 200)
+    abline(v = 0, col="red", lwd=3, lty=2)
+    
+    melted_Z <- melt(cbind(ID = Z_matrix$AOI,Label=Z_matrix$Segment_name,Z_matrix[ ,start:end]))
+    
+    Plot_all_density <- ggplot(melted_Z, aes(value)) + geom_density(alpha = 0.5, color="darkblue", fill="lightblue") +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) + ylab("Density") +xlab("Zscore value")+labs(title = paste0("Density plots of Zscores for ", i)) + geom_vline(xintercept = 0)
+    
+    Plot_all_probes <- ggplot(melted_Z, aes(value, color = variable)) + geom_density(alpha = 0.5) +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA), legend.position = "none") + ylab("Density") +xlab("Zscore value")+labs(title = paste0("Density plots of Zscores for ", i)) + xlim(-4,4) + geom_vline(xintercept = 0)
+    
+   
+    Plot_label <- ggplot(melted_Z, aes(value, fill = Label, color = Label)) + geom_density(alpha = 0.5) +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) + ylab("Density") +xlab("Zscore value")+labs(title = paste0("Density plots of Zscores for ", i)) + geom_vline(xintercept = 0)
+    
+    Plot_main <- ggplot(melted_Z, aes(x=reorder(variable,value,na.rm = TRUE), y=value)) +
+              geom_jitter(color="#e7e1ef", size=0.4, alpha=0.8) +
+              geom_boxplot(outlier.colour="red", alpha=0.5,outlier.size = 0.4) +
+              ylab("Z scores") +
+              xlab("") +
+              labs(title = paste0("Distribution of Z scores for each probe for ", i)) +
+              theme(axis.text.x = element_text(size = 8, angle=90, margin = margin(t = .3, unit = "cm"),hjust=0.99,vjust=0.5), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5),axis.title.y = element_text(size = 8),panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) +
+              geom_hline(yintercept=4) 
+    
+    Plot_AOI <- ggplot(melted_Z, aes(x=reorder(ID,value,na.rm = TRUE), y=value)) +
+              geom_jitter(color="#e7e1ef", size=0.4, alpha=0.5) +
+              geom_boxplot(outlier.colour="red", alpha=0.5,outlier.size = 0.4) +
+              ylab("Z scores") +
+              xlab("") +
+              labs(title = paste0("Distribution of Z scores for each AOI for ", i)) +
+              theme(axis.text.x = element_text(size = 8, angle=90, margin = margin(t = .3, unit = "cm"),hjust=0.99,vjust=0.5), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5),axis.title.y = element_text(size = 8),panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) +
+              geom_hline(yintercept=3) 
+    
+    EnvStats::print(Plot_all_density)
+    EnvStats::print(Plot_all_probes)
+    EnvStats::print(Plot_label)
+    EnvStats::print(Plot_main)
+    EnvStats::print(Plot_AOI)
+}
+
+```
+
+```{r}
+inputfile_postAOI <- read_xlsx("FinalDataset_withCP_withEXP_ACTIVE.xlsx") %>% raster::as.data.frame() %>% rename(AOI=AOI...1) ## original file, use AOI filtered file if AOI was filtered
+inputfile_postAOI <-  inputfile_postAOI %>% relocate(c("Rb_IgG","Ms_IgG1", "Ms_IgG2a","S6", "GAPDH", "Histone_H3"), .before=HLA.DR)
+
+n <- 69##all probes
+n_without <-n-6 ## no of probes with the positive HK and negative IgG controls 
+end <- ncol(inputfile_postAOI)
+start <- end-n+1
+startw <- end-n_without+1
+protein_list <- cbind(AOI=inputfile_postAOI$AOI, inputfile_postAOI[start:end])
+list_subset <-c("ALL AOI","Early Cytotoxic", "Early Helper", "Late Cytotoxic", "Late Helper")
+```
+
+```{r}
+for (i in list_subset) {
+ if(i=="ALL AOI"){
+   dataset <- inputfile_postAOI
+   Z_filtering(dataset,  startw, end, "all AOI")
+ } else {
+   dataset <- inputfile_postAOI %>% dplyr::filter(Segment_name == paste0(i))
+   Z_filtering(dataset,  startw, end, paste0(i))
+ }
+}
+
+
+#Zscore_summary <- data.frame("Attributes" = c("Min Z score value", "Min value of CD20",  "Min value of CD8", "Maximum Z score Value", "Max value of CD20",  "Max value of CD8"), "Value" = c(min(melted_Z$value), min(melted_Z_CD20$value), min(melted_Z_CD8$value) ,max(melted_Z$value), max(melted_Z_CD20$value), max(melted_Z_CD8$value)))
+```
+```{r}
+# Z_matrix2 <- apply(inputfile_postAOI[ ,start:end], 1, function(x) (x - mean(x)) / sd(x)) %>% raster::as.data.frame()
+# 
+# Z_matrix2 <- cbind(inputfile_postAOI[,1:start-1], t(Z_matrix2)) ## NOTE Negative probes WAS NOT CONVERTED TO Z
+# hist(unlist(Z_matrix2[ ,start:end]), ylab = "Frequency", col="#fde0dd", xlab="Zscore value",main="Z score distribution", breaks = 200)
+# abline(v = 0, col="red", lwd=3, lty=2)
+# 
+# melted_Z_Pat <- melt(cbind(Label=Z_matrix2$Segment_name,ID = Z_matrix2$AOI, Z_matrix2[ ,start:end]))
+# melted_Z_Pat_EC <- dplyr::filter(melted_Z_Pat, Label == "Early Cytotoxic")              
+# melted_Z_Pat_EH <- dplyr::filter(melted_Z_Pat, Label == "Early Helper")  
+# 
+# ggplot(melted_Z_Pat, aes(value)) + geom_density(alpha = 0.5, color="darkblue", fill="lightblue") +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) + ylab("Density") +xlab("Zscore value")+labs(title = "Density plots of Zscores") + geom_vline(xintercept = 0)
+# 
+# ggplot(melted_Z_Pat, aes(value, color = variable)) + geom_density(alpha = 0.5) +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA), legend.position = "none") + ylab("Density") +xlab("Zscore value")+labs(title = "Density plots of Zscores") + xlim(-4,4) + geom_vline(xintercept = 0)
+# 
+# ggplot(melted_Z_Pat, aes(value, fill = Label, color = Label)) + geom_density(alpha = 0.5) +theme(axis.text.x = element_text(size = 8), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5), panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) + ylab("Density") +xlab("Zscore value")+labs(title = "Density plots of Zscores") + geom_vline(xintercept = 0)
+# 
+# ggplot(melted_Z_Pat, aes(x=reorder(variable,value,na.rm = TRUE), y=value)) +
+#           geom_jitter(color="#e7e1ef", size=0.4, alpha=0.5) +
+#           geom_boxplot(outlier.colour="red", alpha=0.5,outlier.size = 0.4) +
+#           ylab("Z scores") +
+#           xlab("") +
+#           theme(axis.text.x = element_text(size = 8, angle=90, margin = margin(t = .3, unit = "cm"),hjust=0.99,vjust=0.5), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5),axis.title.y = element_text(size = 8),panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) +
+#           geom_hline(yintercept=4) 
+# 
+# ggplot(melted_Z_Pat, aes(x=reorder(Label,value,na.rm = TRUE), y=value)) +
+#           geom_jitter(color="#e7e1ef", size=0.4, alpha=0.5) +
+#           geom_boxplot(outlier.colour="red", alpha=0.5,outlier.size = 0.4) +
+#           ylab("Z scores") +
+#           xlab("") +
+#           theme(axis.text.x = element_text(size = 8, angle=90, margin = margin(t = .3, unit = "cm"),hjust=0.99,vjust=0.5), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5),axis.title.y = element_text(size = 8),panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) +
+#           geom_hline(yintercept=4) 
+# 
+# ggplot(melted_Z_Pat, aes(x=reorder(ID,value,na.rm = TRUE), y=value)) +
+#           geom_jitter(color="#e7e1ef", size=0.4, alpha=0.5) +
+#           geom_boxplot(outlier.colour="red", alpha=0.5,outlier.size = 0.4) +
+#           ylab("Z scores") +
+#           xlab("") +
+#           theme(axis.text.x = element_text(size = 8, angle=90, margin = margin(t = .3, unit = "cm"),hjust=0.99,vjust=0.5), axis.ticks.length.x = unit(0.1, "cm"),axis.ticks.x = element_line(size = 0.5),axis.title.y = element_text(size = 8),panel.background = element_rect(fill = "white"),panel.border = element_rect(fill = NA)) +
+#           geom_hline(yintercept=4) 
+
+```
+
+
+```{r}
+# # Compute t-SNE without doing the PCA step
+# tsne_output <- Rtsne(Z_matrix[ ,startw:end],check_duplicates = FALSE, pca = TRUE, theta=0.5, dims=2, perplexity=30, verbose=FALSE, max_iter = 10000, pca_scale = TRUE)
+# 
+# # Show the obtained embedding coordinates
+# #head(tsne_output$Y)
+# 
+# # Store the first two coordinates and plot them 
+# tsne_plot <- data.frame(tsne_x = tsne_output$Y[,1], tsne_y = tsne_output$Y[,2], digit = as.factor(Z_matrix$Segment_name))
+# 
+# # Plot the coordinates
+# ggplot(tsne_plot, aes(x = tsne_x, y = tsne_y, color = digit)) + 
+# 	ggtitle("t-SNE of MNIST sample") + 
+# 	geom_point(aes(label = digit), size = 2, alpha = 0.5) 
+```
+
+## Cycloess normalization 
+```{r}
+conflict_prefer("as.data.frame", "raster")
+cycloess <- NormalyzerDE::performCyclicLoessNormalization(inputfile_postAOI[,startw:end]) %>% raster::as.data.frame()
+cycloess <- cbind(inputfile_postAOI[,1:startw-1], cycloess)
+
+for (i in list_subset) {
+ if(i=="ALL AOI"){
+   dataset <- cycloess
+   Z_filtering(dataset,  startw, end, "all AOI")
+ } else {
+   dataset <- cycloess %>% dplyr::filter(Segment_name == paste0(i))
+   Z_filtering(dataset,  startw, end, paste0(i))
+ }
+}
+```
+
+```{r}
+conflict_prefer("as.data.frame", "raster")
+quantile <- NormalyzerDE::performQuantileNormalization(as.matrix(inputfile_postAOI[,startw:end])) %>% raster::as.data.frame()
+quantile <- cbind(inputfile_postAOI[,1:startw-1], quantile)
+
+for (i in list_subset) {
+ if(i=="ALL AOI"){
+   dataset <- quantile
+   Z_filtering(dataset,  startw, end, "all AOI")
+ } else {
+   dataset <- quantile %>% dplyr::filter(Segment_name == paste0(i))
+   Z_filtering(dataset,  startw, end, paste0(i))
+ }
+}
+```
+```{r}
+jobName <- "Normalization_p2104"
+dataFp <- cbind(inputfile_postAOI$AOI, inputfile_postAOI[,startw:end]) %>% t() %>% row_to_names(row_number = 1) %>% as.data.frame()
+designFp <-  cbind("sample" = inputfile_postAOI$AOI, "group"=inputfile_postAOI$Segment_name ) 
+
+write.table(dataFp, file = "data.txt", row.names=FALSE, sep="\t")
+write.table(designFp, file = "design.txt", row.names=FALSE, sep="\t")
+
+data_path <- system.file(package="NormalyzerDE", "extdata", "data.txt")
+design_path <- system.file(package="NormalyzerDE", "extdata", "design.txt")
+experimentObj <-  NormalyzerDE::setupRawDataObject(data_path, design_path, "default", TRUE, "sample", "group")
+normObj <-NormalyzerDE::getVerifiedNormalyzerObject(jobName, experimentObj)
+normResults <- NormalyzerDE::normMethods(normObj)
+normResultsWithEval <- NormalyzerDE::analyzeNormalizations(normResults)
+outputDir <- tempdir( "/Users/lavanya/Box/Cancertarget/Work-in-progress/LAVANYA/EXPERIMENTS/GeoMx/Analysis/PROTEIN P2104 data analysis/")
+NormalyzerDE::generatePlots(normResultsWithEval, outputDir)
+
+##NOT ABLE TO GENERATE REPORT THROUGH R, TRY ONLINE 
+
+```

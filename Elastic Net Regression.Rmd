@@ -1,0 +1,191 @@
+---
+title: "Elastic net regression"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Calling packages
+```{r}
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(vip)
+library(recipes) 
+library(dplyr)
+library(ggplot2)
+```
+
+INPUT FILE - 
+Col 1 - Patient ID 
+Col 2 - Event or Status
+Col 3 - Time (OS/EFS/PFS) "Stime1" in the following code
+Col 4 and beyond Variable1 to VariableX
+this format of the input file is crucial
+
+```{r}
+datafile <- 'inputfile.csv'
+
+data<-read.table(datafile, header=T, sep=",", dec=".", na.strings = "NA")
+data2 <- data[,-(1:2)] ### this would mean data2 includes the variable columns and the time (OS/PFS)
+```
+
+# Split the data into training and test set
+
+## The set.seed is a random number generator, Decide your own seed and stick to that in all your codes to ensure a degree of specificity
+## In this script example set.seed is used many times and is kept same throughout, this is a preferable method
+## The set.seed is never changed, keeping it same ensures same results across multiple runs, since the random number sequence remains same 
+
+```{r}
+set.seed(123)
+training.samples <- 
+  createDataPartition(data2$Stime1, p = 0.80, list = FALSE)
+train.data  <- data2[training.samples, ]
+test.data <- data2[-training.samples, ]
+```
+
+# Splitting the data into test and train - THIS IS ONE WAY TO DO THIS
+```{r}
+#set.seed(123)
+#train = sample(1:nrow(x), nrow(x)*37/44)
+#test = -(train)
+#y_test = y[test]
+```
+
+# Splitting the data into test and train - THIS IS ANOTHER WAY TO DO THIS
+```{r}
+# Predictor variables
+x <- model.matrix(Stime1~., train.data)[,-1]
+# Outcome variable
+y <- train.data$Stime1
+```
+
+Applying FUNCTION
+## NOTE - alpha defination is important and ranges from 0 to 1
+## if alpha== 0 then it would be called ridge regression and this would imply no variables would have coefficient collapsing to 0 (L2 regularization)
+## if alpha== 1 then it would be called lasso regression and this would imply that absolute value is used for regularization and most possible number of coefficients would collapse to 0 (L1 regularization)
+
+## alpha can have any value between 0 and 1 and deciding which alpha to use is a crucial decision 
+## there are several ways to make this decision. In this script we had tested alpha between [0,1] with 0.1 increments and based decision on highest R2 value and lowest RMSE 
+## the second method is to USE the ENSR method (another script in the folder)
+
+```{r}
+glmnet(x, y, alpha = 0.5, lambda = NULL)
+```
+# Find the best lambda using cross-validation
+## the final lambda selected would be the minimum value through CV
+```{r}
+set.seed(123) 
+cv <- cv.glmnet(x, y, alpha = 0.5)
+# Display the best lambda value
+lambda <- cv$lambda.min
+```
+
+## this plot gives you log lamba vs mean square error curve 
+```{r}
+plot(cv)
+```
+
+## Building the model
+## the plot yields coefficients and the lambda value
+```{r}
+lasso.mod <- glmnet(x, y, alpha = 0.5)
+plot(lasso.mod, xvar = "lambda")
+```
+
+## final model based on your training set 
+```{r}
+lasso.mod <- glmnet(x, y, alpha = 0.5, lambda = lambda)
+```
+
+## Extracting the non-zero coefficients and their respective variable name
+```{r}
+Coefs <- coef(lasso.mod)
+Coefs[which(Coefs != 0 ) ] 
+Coefs@Dimnames[[1]][which(Coefs != 0 ) ]
+Results <- data.frame(
+  features = Coefs@Dimnames[[1]][ which(Coefs != 0 ) ], #intercept included
+  coefs    = Coefs              [ which(Coefs != 0 ) ]  #intercept included
+)
+length(Coefs@Dimnames[[1]][ which(Coefs != 0 ) ])
+```
+
+# Make predictions on the test data, model validation
+```{r}
+x.test <- model.matrix(Stime1 ~., test.data)[,-1]
+predictions <- lasso.mod %>% predict(x.test) %>% as.vector()
+# Model performance metrics
+error <- data.frame(RMSE = RMSE(predictions, test.data$Stime1), Rsquare = R2(predictions, test.data$Stime1))
+```
+
+```{r}
+Results ## listing the non-zero coefficients and variables in a table 
+error ## final RMSE and R2 predictions
+```
+
+```{r}
+set.seed(123)
+
+# grid search across 
+cv_glmnet <- train(
+  x = x,
+  y = y,
+  method = "glmnet",
+  preProc = c("zv", "center", "scale"),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+```
+
+# model with lowest RMSE
+```{r}
+cv_glmnet$bestTune
+##   alpha     lambda
+## 7   0.1 0.02007035
+
+# results for model with lowest RMSE
+cv_glmnet$results %>%
+  filter(alpha == cv_glmnet$bestTune$alpha, lambda == cv_glmnet$bestTune$lambda)
+##   alpha     lambda      RMSE  Rsquared        MAE     RMSESD RsquaredSD
+## 1   0.1 0.02007035 0.1277585 0.9001487 0.08102427 0.02235901  0.0346677
+##         MAESD
+## 1 0.005667366
+
+# plot cross-validated RMSE
+ggplot(cv_glmnet)
+```
+
+```{r}
+pred <- predict(cv_glmnet, x)
+# compute RMSE of transformed predicted
+#RMSE(exp(pred), exp(y))
+RMSE(pred, y)
+```
+
+##Importance plot of the non-zero coefficient variables
+```{r}
+vip(cv_glmnet, num_features = 20, geom = "point")
+```
+
+Plotting the non-zero coefficients 
+```{r}
+df<- Results[-c(1),]
+theme_set(theme_grey())
+#df2$features <- rownames(df) 
+df$type <- ifelse(df$coefs < 0, "Negative", "Positive")
+
+df <- df[order(df$coefs), ] #Ascending sort on Z Score
+df$features <- factor(df$features, levels = df$features)
+
+ggplot(df, aes(x=features, y=coefs)) +
+  geom_bar(stat='identity', aes(fill=type), width=.5) +
+  scale_fill_manual(values=c("#006666","#000666")) +
+  #scale_fill_viridis_d() +
+  labs( title= "ENN Coefficients", x = "Features", y="Coefficients") +
+  coord_flip()
+```
+

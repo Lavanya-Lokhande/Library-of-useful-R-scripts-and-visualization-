@@ -1,0 +1,118 @@
+---
+title: "Kmeans clustering"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("XXX")
+
+library("cluster")
+library("factoextra")
+library("magrittr")
+library("tidyr")
+library("supclust")
+library("ggpubr")
+```
+
+INPUT FILE - 
+Col 1 - Patient ID 
+Col 2 - OS time/PFS/EFS
+Col 3 - Event/Status 
+Col 4-11 - Clinical parameters 
+Col 12-44 (in this case) - Variable list which was protein intensity in this case 
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+
+inputfile <- 'Inputfile.csv'
+dataread<-read.csv(inputfile, header = TRUE, sep = ";")#,col_names = TRUE) #%>% select(1:44,.) %>%
+dataread <- data.frame(dataread)
+
+samplelist <- dataread[1]
+varlist <- dataread[12:44]
+OStime <- as.data.frame(dataread[2])
+clusterfile <- cbind(samplelist,varlist)
+clusterfile <- data.frame(clusterfile, row.names = 1)
+clusterfile2 <- data.frame(clusterfile, row.names = c(1:41))
+clusterfile3 <- cbind(OStime,varlist)
+
+```
+
+
+common distance measures used for assessing similarity between observations
+this will give the output of a distance matrix 
+```{r}
+res.dist <- get_dist(clusterfile2, stand = TRUE, method = "pearson")
+
+fviz_dist(res.dist, 
+   gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+Best number of clusters 
+```{r}
+fviz_nbclust(clusterfile2, kmeans, method = "gap_stat")
+```
+2D PCA Plot
+```{r}
+set.seed(123)
+km.res <- kmeans(clusterfile2, 3, nstart = 25)
+# Visualize
+library("factoextra")
+fviz_cluster(km.res, data = clusterfile2,
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+```
+Pam cluster plot
+```{r}
+pam.res <- pam(clusterfile, 3)
+# Visualize
+fviz_cluster(pam.res)
+```
+
+
+Heirarchial clustering based on euclidean dissimilarity matrix and WARD.D2 method 
+Explore different combinations with distance and matrix 
+```{r}
+# Compute hierarchical clustering
+res.hc <- clusterfile %>%
+  scale() %>%                    # Scale the data
+  dist(method = "euclidean") %>% # Compute dissimilarity matrix
+  hclust(method = "ward.D2")     # Compute hierachical clustering
+
+# Visualize using factoextra
+# Cut in 4 groups and color by groups
+fviz_dend(res.hc, k = 3, # Cut in four groups
+          cex = 0.5, # label size
+          k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"),
+          color_labels_by_k = TRUE, # color labels by groups
+          rect = TRUE # Add rectangle around groups
+          )
+```
+heatmap of the above keeping the dendrogram true
+```{r}
+heatmap((t(as.matrix(clusterfile2))), keep.dendro = TRUE, cexCol = "0.5", cexRow = "0.5", margins = c(1,1))
+```
+Fuzzy cluster 
+```{r}
+res.fanny <- fanny(clusterfile2, 3)
+res.fanny$coeff
+fviz_cluster(res.fanny, ellipse.type = "norm", repel = TRUE,
+             palette = "jco", ggtheme = theme_minimal(),
+             legend = "right")
+fviz_silhouette(res.fanny, palette = "jco",
+                ggtheme = theme_minimal())
+```
+
+
+C-statistic
+```{r}
+sksurv.metrics.concordance_index_censored(dataread$d01, dataread$osman, dataread$SIG33, tied_tol=1e-08)¶
+
+```
+

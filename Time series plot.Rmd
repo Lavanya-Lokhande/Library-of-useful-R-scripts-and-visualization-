@@ -1,0 +1,74 @@
+---
+title: "BTKvsTime"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+calling packages
+```{r}
+library(GGally)
+library(ggplot2)
+library(viridis)
+```
+INPUT FILE for this script
+Col 1 - patient ID 
+Col 2 - Time (OS/PFS/EFS)
+Col 3 - Time (OS/PFS/EFS)
+Col 4 - group (which ever parameter you want the subgroups for if any)
+Col 5-8 - time series values such as intensity (therefore, the intensity values across 4 sequential cycles)
+number of rows for this example is 24 with row1 being the column header
+```{r}
+datafile <- 'Rinput.csv'
+input<-read.table(datafile, header=T, sep="\t", dec=".", na.strings = "NA")
+```
+
+```{r}
+lab<-as.vector(input$pfsman.1)
+early<-input[1:8, ]
+late <- input[9:24, ]
+```
+
+```{r}
+ggparcoord( data = Group1,
+    columns = 5:8, 
+    scale = "globalminmax",
+   # centerObsID = nrow(early),
+    showPoints = TRUE, 
+    title = "XXX",
+    missing = "median",
+    groupColumn = 3,
+    alphaLines = 0.3,
+    boxplot = TRUE,
+    scaleSummary = "median",
+    shadeBox = NULL
+    #order = "allClass"
+    #mapping = ggplot2::aes(size = 1)
+    ) +
+ggplot2::scale_size_identity()+
+scale_color_viridis(discrete=FALSE) + ylab("Log(intensity)") + xlab("Timepoints") ## change axis legends
+```
+
+```{r}
+ggparcoord( data = Group2,
+    columns = 5:8, 
+    scale = "globalminmax",
+   # centerObsID = nrow(early),
+    showPoints = TRUE, 
+    title = "YYY",
+    missing = "median",
+    groupColumn = 3,
+    alphaLines = 0.3,
+    boxplot = TRUE,
+    scaleSummary = "median",
+    shadeBox = NULL
+    #order = "allClass"
+    #mapping = ggplot2::aes(size = 1)
+    ) +
+ggplot2::scale_size_identity()+
+scale_color_viridis(discrete=FALSE) + ylab("Log(intensity)") + xlab("Timepoints") ## change axis legends
+```
+
+

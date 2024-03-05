@@ -1,0 +1,150 @@
+---
+title: "Cox Regression"
+author: "Lavanya Lokhande and Mattias Ohlsson"
+date: "3/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("XXX") ##Set your directory
+```
+
+##Calling libraries
+```{r}
+library(survcomp)
+library(survival)
+library(ggplot2)
+library(survminer)
+source("http://peterhaschke.com/Code/multiplot.R")
+```
+
+INPUT FILE - 
+Column 1 - Patient ID
+Column 2 - Event 
+Column 3 - Survival time, in the following script it is given as "Stime1"
+Column 4 and beyond - all the variables to check for cox
+Row represents all samples with Row 1 being the column headers
+
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+
+
+datafile <- 'Input_file.csv'
+
+data<-read.table(datafile, header=T, sep=",", dec=".", na.strings = "NA")
+## if you problem with calling the file, check the 'sep' in the above line
+
+write.table(c(), file="coxRes.csv", row.names=FALSE, col.names=FALSE)
+write.table(c(), file="coxCheck.csv", row.names=FALSE, col.names=FALSE)
+```
+
+##Cox regression main script 
+#final output are the values for concordant index and confidence interval, hazard ratio and CI, pval for HR, Pval for concordant index and coeffifcient values 
+```{r}
+mysave <- function(xx, num, mode){
+  a <- summary(xx)
+  # Cindex
+  pred <- predict(xx, data=data, type='risk');
+  concObj <- concordance.index(pred, xx$y[,1], xx$y[,2], method='noether');
+  conc <- concObj$c.index
+  conc_high <- concObj$upper
+  conc_low <- concObj$lower
+  pc <- concObj$p.value 
+  
+  ntot <- a$n
+  conc0 <- a$concordance[1]
+  names(conc) = c()
+  
+  tmp1 <- a$conf.int
+  tmp2 <- a$coefficients
+  tmp3 <- md$coefficients
+  varnames <- names(tmp3)
+  print(tmp2)
+  #print(conc)
+  
+  for (i in 1 : num) {
+    hr = tmp1[i,1]
+    hr_low <- tmp1[i,3]
+    hr_high <- tmp1[i,4]
+    coeff <- tmp2[i,1]
+    pval <- tmp2[i,5] ## for hazard ratio
+    vname <- varnames[i]
+    
+    vals <- c(mode, vname, ntot, conc, conc_low, conc_high, hr, hr_low, hr_high, pval, pc, coeff)
+    write.table(t(vals), append=TRUE, file="coxRes.csv", row.names=FALSE, col.names=FALSE)
+    #print(vals)
+  }
+}
+```
+
+## defining Cox check function where the proportionality model is tested
+## for model to be applicable the output pvalue should be non-significant
+```{r}
+coxcheck <- function(xx, num, mode){
+  cc <- cox.zph(xx)
+  #print(cc)
+  #plot(cc)
+  tmp <- cc$table
+  varnames <- rownames(tmp);
+  
+  for (i in 1 : num) {
+
+    pval <- tmp[i,3]
+    vname <- varnames[i]
+    
+    vals <- c(mode, vname, pval)
+    write.table(t(vals), append=TRUE, file="coxCheck.csv", row.names=FALSE, col.names=FALSE)
+  }
+
+  #plot.new();
+  #if (num > 1) {
+  #  par(mfrow=c(2,2))
+  #}
+  #plot(cc, main=mode);
+  
+}
+```
+
+## calling the above 2 function for your dataset 
+
+```{r}
+vl <- names(data)
+vl <- vl[-c(1,2,3)]
+len <- length(vl)
+
+#########_____________ this part is only if you call for one variable at a time 
+
+#md <- coxph(Surv(Stime1, Event) ~ Var1, data)
+#mysave(md, 1, 'U')
+#coxcheck(md, 1, 'U')
+
+#md <- coxph(Surv(Stime1, Event) ~ Var2, data)
+#mysave(md, 1, 'U')
+#coxcheck(md, 1, 'U')
+#########_____________
+
+
+
+#########_____________ this part is only if you call for many variable at a time i.e. when you have hundreds of variables to check for cox and writing single variable at a time like above is not feasible. this is still a univariate analysis
+
+myplots <- list() 
+blist <- list()
+for (j in 1:len){
+    print(j)
+    f1 = as.formula(paste("Surv(Stime1, Event) ~ ", paste(vl[j], collapse="+")))
+    md <- coxph(f1, data=data)
+    vals1 <- c(vl[j], md[1],md[5])
+    write.table(t(vals1), append=TRUE, file="coxcoeff.csv", row.names=FALSE, col.names=FALSE)
+    mysave(md, 1, 'U')
+    coxcheck(md, 1, 'U')
+    ggforest(md)
+}
+#########_____________
+```
+
+## the final output files would be saved in the directory you set in the first step

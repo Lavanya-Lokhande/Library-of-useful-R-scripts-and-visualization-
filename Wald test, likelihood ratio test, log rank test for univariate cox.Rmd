@@ -1,0 +1,84 @@
+---
+title: "Univariate and multivariate sig MIPI cox"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Calling packages and setting directory
+
+```{r}
+setwd("XXX")
+
+library(survcomp)
+library(survival)
+library(ggplot2)
+library(purrr)
+library(tidyverse)
+source("http://peterhaschke.com/Code/multiplot.R")
+
+```
+
+calling data 
+INPUT FILE - 
+Column 1 - Patient ID
+Column 2 - Event or status
+Column 3 - Survival time, in the following script it is given as "time"
+Column 4 and beyond - all the variables to check for cox
+Row represents all samples with Row 1 being the column headers
+
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+datafile <- 'Inputfile.csv'
+data<-read_csv(datafile,col_names = TRUE) #%>% select(.,1:8) %>% filter(.,!(is.na(Pat)))
+```
+
+All the above information as a data matrix 
+```{r}
+ID<-data[1]
+os<-data[3]
+event<- data[2]
+
+time<- as.numeric(as.character(unlist(os[1])))
+status<- as.numeric(as.character(unlist(event[1])))
+covariates <- c("Var1", "Var2", "Var3", "Var4", "Var5")
+Univ <- sapply(covariates, function(x) as.formula(paste('Surv(time, status)~', x)))
+
+univ_models <- lapply( Univ, function(x){coxph(x, data = data)})
+
+univ_results <- lapply(univ_models,
+                       function(x){ 
+                          x <- summary(x)
+                          n <- x$n
+                          wald.test.pvalue<-signif(x$wald["pvalue"], digits=4)
+                          wald.test<-signif(x$wald["test"], digits=4)
+                          likelihoodratio.test<-signif(x$logtest["test"], digits = 4)
+                          likelihoodratio.pvalue<-signif(x$logtest["pvalue"], digits = 4)
+                          score.logrank.test<-signif(x$sctest["test"], digits = 4)
+                          score.logrank.pvalue<-signif(x$sctest["pvalue"], digits = 4)
+                          beta<-signif(x$coef[1], digits=4);#coeficient beta
+                          HR <-signif(x$coef[2], digits=4);#exp(beta)
+                          HR.confint.lower <- signif(x$conf.int[,"lower .95"],3)
+                          HR.confint.upper <- signif(x$conf.int[,"upper .95"],3)
+                          HR <- paste0(HR, " (", HR.confint.lower, "-", HR.confint.upper, ")")
+                          res<-c(n,beta, HR, wald.test, wald.test.pvalue, likelihoodratio.test, likelihoodratio.pvalue, score.logrank.test, score.logrank.pvalue)
+                          names(res)<-c("n","beta", "HR (95% CI for HR)", "wald.test", 
+                                        "wald.test.pvalue", "likelihoodratio.test", "likelihoodratio.pvalue", "score.logrank.test", "score.logrank.pvalue")
+                          return(res)
+                          #return(exp(cbind(coef(x),confint(x))))
+                         })
+res <- t(as.data.frame(univ_results, check.names = FALSE))
+as.data.frame(res)
+
+```
+
+
+

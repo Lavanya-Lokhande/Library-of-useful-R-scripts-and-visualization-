@@ -1,0 +1,29 @@
+---
+title: "tst"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+initial_seed <- Sys.time() 
+initial_seed<-as.integer(initial_seed)
+print(initial_seed)
+```
+
+
+```{r}
+the_seed=initial_seed %% 100000
+print(the_seed)
+```
+
+
+```{r}
+set.seed(XXXXX) ## from above
+print(rnorm(3))
+#reproduce your simulation
+```
+

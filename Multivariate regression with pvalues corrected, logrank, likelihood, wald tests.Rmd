@@ -1,0 +1,92 @@
+---
+title: "multivariate sig and MIPI"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Calling packages
+
+```{r}
+setwd("XXX")
+
+library(survcomp)
+library(survival)
+library(ggplot2)
+library(purrr)
+library(tidyverse)
+library(caret)
+library(boot)
+library(bootstrap)
+source("http://peterhaschke.com/Code/multiplot.R")
+
+```
+
+calling data 
+INPUT FILE - 
+Column 1 - Patient ID
+Column 2 - Event or status
+Column 3 - Survival time, in the following script it is given as "time"
+Column 4 and beyond - all the variables to check for cox
+Row represents all samples with Row 1 being the column headers
+
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+datafile <- 'Inputfile.csv'
+data<-read.table(datafile, header=T, sep=",", dec=".", na.strings = "NA")
+##data<-read.table(datafile, header=T, dec=".", na.strings = "NA")
+```
+
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ Var1 + Var2 + Var3, data =  data)
+S1 <- summary(res.cox) 
+n <- S1$n
+coef1 <- signif(S1$coefficients[,1],4)
+
+HR <-signif(S1$coefficients[,2], digits=4);#exp(beta)
+HRL <- signif(S1$conf.int[,"lower .95"],3)
+HRU <- signif(S1$conf.int[,"upper .95"],3)
+HR1 <- paste0(HR, " (", HRL, "-", HRU, ")")
+P <- signif(S1$coefficients[,5],4)
+W1.test <- signif(S1$wald["test"], digits=4)  
+W1.P <- signif(S1$wald["pvalue"], digits=4)
+L1.test <- signif(S1$logtest["test"], digits = 4)
+L1.P <- signif(S1$logtest["pvalue"], digits = 4)
+Sc1.test <- signif(S1$sctest["test"], digits = 4)
+Sc1.P <- signif(S1$sctest["pvalue"], digits = 4)
+
+Adjusted.Pvalue <- p.adjust(P, method = p.adjust.methods, n = length(P))
+Bonferroni_Corrected <- p.adjust(P, method = "bonferroni", n = length(P))
+FDR_Corrected<- p.adjust(P, method = "fdr", n = length(P))
+
+df1 <- data.frame(n=n, beta=coef1, HR= HR1, P, Adjusted.Pvalue, Bonferroni_Corrected , FDR_Corrected)
+
+df1.stats <- tibble("Wald.test" = W1.test, "wald.test.pvalue" = W1.P, "likelihoodratio.test"= L1.test, "likelihoodratio.pvalue" = L1.P, "score.logrank.test" = Sc1.test, "score.logrank.pvalue" = Sc1.P) %>% t() 
+colnames(df1.stats)[1] <- 'Var1 vs Var2 vs Var 3'
+
+S1                     
+df1
+df1.stats
+
+```
+
+
+Creating a compiled table if you run the above for different comparisons and want a table
+
+```{r}
+### Compiling B- HR table
+
+merge1 <- do.call("rbind", list(df1,df2,df3,df4,df5))
+print(merge1,row.names = TRUE)
+
+merge2 <- do.call("cbind", list(df1.stats,df2.stats, df3.stats,df4.stats,df5.stats))
+Pval_final <- as.data.frame(merge2)
+print(Pval_final,row.names = TRUE)
+
+```

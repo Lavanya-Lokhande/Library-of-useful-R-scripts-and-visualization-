@@ -1,0 +1,67 @@
+---
+title: "KM curve"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Calling packages
+
+```{r}
+setwd("XXX")
+
+#library(survcomp)
+library(survminer)
+library(survival)
+library(ggplot2)
+library(rms)
+
+source("http://peterhaschke.com/Code/multiplot.R")
+library("viridis")    
+library(RColorBrewer)
+
+```
+calling data 
+
+INPUT FILE - 
+Col 1 - Patient ID
+Col 2 - Time (OS/PFS/EFS)
+Col 3 - Event or status 
+Col 4 and beyond all parameters and groups for which you want KM curves 
+
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+
+inputfile <- 'Input_KMcurves.csv'
+
+dataread<-read.csv(inputfile, header = TRUE, sep = ",")#,col_names = TRUE) #%>% select(1:44,.) %>%
+dataread <- data.frame(dataread)
+```
+
+defining a new file 
+KM graph for 3 subgroups TYPE 1
+```{r}
+require("survival")
+fit <- survfit(Surv(osman, d01) ~ PARAMETER1, data = dataread)
+ggsurvplot(fit, risk.table = TRUE, pval = TRUE, xlim = c(0,30), xlab = "Time in months", ggtheme = theme_bw(), risk.table.y.text.col = T, risk.table.y.text = FALSE, risk.table.height = 0.3, surv.plot.height = 1, fontsize = 4, palette = c("#E69F00","#00AFBB", "#FC4E07"), legend.labs = c("Group1", "Group2","Group3"))
+```
+
+KM graph for 3 subgroups TYPE 2
+```{r}
+require("survival")
+fit <- survfit(Surv(osman2,d01) ~ PARAMETER2, data = dataread)
+ggsurvplot(fit, risk.table = TRUE, pval = TRUE, xlim = c(0,51), xlab = "Time in months", ggtheme = theme_grey(), risk.table.y.text.col = T, risk.table.y.text = FALSE, risk.table.height = 0.3, surv.plot.height = 1, fontsize = 4, palette = "Set2", risk.table.col = "strata", legend.labs = c("Group1", "Group2","Group3"), conf.int.fill = TRUE)
+```
+
+
+NOTE - Play with the visualization, for example change the hexadecimal colour palette for colours you like
+Several palettes are available on R (eg - Viridis), but hexadecimal values for different colours can be found - https://colorbrewer2.org/#type=qualitative&scheme=Accent&n=3
+https://www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/
+
+NOTE2 - remember to change xlim range to your x-axis range
+NOTE3 - change ggtheme in accordance to your preference as well

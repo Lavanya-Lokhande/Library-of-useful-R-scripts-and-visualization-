@@ -1,0 +1,149 @@
+---
+title: "Harrells Cindex"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Calling packages
+
+```{r}
+setwd("XXXX")
+library(survcomp)
+library(survival)
+library(ggplot2)
+library(purrr)
+library(tidyverse)
+library(dynpred)
+source("http://peterhaschke.com/Code/multiplot.R")
+
+```
+calling data 
+Input file - 
+Col 1 - Pat ID
+Col2 - status or event
+col 3 - time (OS/EFS/PFS)
+Col4 and beyond - different parameters to check, usually clinical parameters like mutational status, gender, age and model like very scores and models 
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+datafile2 <- 'Inputfile.csv'
+data2<-read_csv(datafile2,col_names = TRUE) #%>% select(1:44,.) %>% filter(.,!(is.na(Pat)))
+
+```
+
+
+Harrells's c index using the cindex function
+```{r}
+S1<- cindex(Surv(time, status) ~ S1, data = data2)
+S2<- cindex(Surv(time, status) ~ S2, data = data2)
+S3<- cindex(Surv(time, status) ~ S3, data = data2)
+S4<- cindex(Surv(time, status) ~ S4, data = data2)
+S5<- cindex(Surv(time, status) ~ S5, data = data2)
+S6<- cindex(Surv(time, status) ~ S6, data = data2)
+S7<- cindex(Surv(time, status) ~ S7, data = data2)
+rbind(S1,S2,S3,S4,S5,S6,S7)
+```
+
+---------------------------------------------------------------------------------------------------------------------------------------
+### THE FOLLOWING IS
+Function to compute the concordance index for survival or binary class prediction extrapolated using cox regression function
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S1, data =  data2)
+pred <- predict(res.cox, data=data4, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c1 <- c(conc, conc_low, conc_high)
+
+```
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S2, data =  data2)
+pred <- predict(res.cox, data=data2, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c2 <- c(conc, conc_low, conc_high)
+```
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S3, data =  data2)
+pred <- predict(res.cox, data=data2, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c3 <- c(conc, conc_low, conc_high)
+```
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S4, data =  data2)
+pred <- predict(res.cox, data=data2, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c4 <- c(conc, conc_low, conc_high)
+```
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S5, data =  data2)
+pred <- predict(res.cox, data=data2, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c5 <- c(conc, conc_low, conc_high)
+```
+
+```{r}
+res.cox <- coxph(Surv(time, status) ~ S6, data =  data2)
+pred <- predict(res.cox, data=data2, type='risk');
+concObj <- concordance.index(pred, res.cox$y[,1], res.cox$y[,2], method='noether');
+conc <- concObj$c.index
+conc_high <- concObj$upper
+conc_low <- concObj$lower
+pc <- concObj$p.value
+ntot <- a$n
+conc0 <- a$concordance[1]
+names(conc) = c()
+  
+c6 <- c(conc, conc_low, conc_high)
+```
+
+row combine for the final table
+```{r}
+rbind(c1,c2,c3,c4,c5,c6,c7)
+```

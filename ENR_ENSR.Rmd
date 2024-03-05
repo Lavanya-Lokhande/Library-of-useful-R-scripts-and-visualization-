@@ -1,0 +1,210 @@
+---
+title: "New ENR"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+https://cran.r-project.org/web/packages/ensr/vignettes/ensr-examples.html
+
+```{r}
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(vip)
+library(recipes) 
+library(dplyr)
+library(ggplot2)
+library(ensr)
+library(data.table)
+library(ggforce)
+library(doMC)
+```
+
+```{r}
+registerDoMC(cores = max(c(detectCores() - 2L, 1L)))
+options(datatable.print.topn  = 3L,
+        datatable.print.nrows = 3L)
+```
+
+INPUT FILE 
+COL 1 - patient ID
+COL 2 - Event / status 
+COL 3 - OS/EFS/PFS time
+Col 4 and beyond - Var1, Var2..... Varx
+
+```{r}
+datafile <- 'Input_file_ENR_difference.csv'
+
+data<-read.table(datafile, header=T, sep=",", dec=".", na.strings = "NA")
+data2 <- data[,-(1:2)]
+```
+
+# Split the data into training and test set
+
+## The set.seed is a random number generator, Decide your own seed and stick to that in all your codes to ensure a degree of specificity
+## In this script example set.seed is used many times and is kept same throughout, this is a preferable method
+## The set.seed is never changed, keeping it same ensures same results across multiple runs, since the random number sequence remains same 
+
+```{r}
+#set.seed(446098)
+set.seed(123)
+training.samples <- 
+  createDataPartition(data2$Stime1, p = 0.70, list = FALSE)
+train.data  <- data2[training.samples, ]
+test.data <- data2[-training.samples, ]
+```
+
+```{r}
+#set.seed(446098)
+set.seed(123)
+y_matrix <- as.matrix(train.data$Stime1)
+x_matrix <- as.matrix(train.data[,-1])
+```
+
+# Predictor variables
+```{r}
+x <- model.matrix(Stime1~., train.data)[,-1]
+# Outcome variable
+y <- train.data$Stime1
+```
+
+## ensr object that searched across a grid value for alpha and lambda to find the global minimum where CV error is lowest 
+```{r}
+ensr_obj <- ensr(y = y_matrix, x = x_matrix, standardize = FALSE)
+ensr_obj
+plot(ensr_obj)
+```
+## summarising in a table
+```{r}
+ensr_obj_summary <- summary(object = ensr_obj)
+ensr_obj_summary
+```
+## finding the minimum
+```{r}
+ensr_obj_summary[cvm == min(cvm)]
+```
+## From the above the lambda and alpha is decided
+
+```{r}
+str(preferable(ensr_obj), max.level = 1L)
+```
+## Plotting L1 regularization, lambda and deviance
+```{r}
+par(mfrow = c(1, 3))
+plot(preferable(ensr_obj), xvar = "norm")
+plot(preferable(ensr_obj), xvar = "lambda")
+plot(preferable(ensr_obj), xvar = "dev")
+
+```
+
+```{r}
+#plot(ensr_obj) +
+ # theme_minimal() +
+ # facet_zoom(x = 0.4 < alpha & alpha < 0.6, y = 1e+03< lambda & lambda < 1e+02)
+```
+
+```{r}
+summary(ensr_obj)[cvm == min(cvm)]
+```
+
+```{r}
+plot(ensr_obj, type = 2)
+```
+### Always change alpha and lambda from above 
+
+## DECIDE alpha and lambda values from LINE 89
+```{r}
+alpha = 0.1666667 ## from line 89
+lambda = 16.3148	## from line 89
+
+#making the model
+lasso.mod <- glmnet(x, y, alpha = alpha, lambda = lambda)
+```
+
+## finding the non-zero coefficients and their respective variables 
+```{r}
+Coefs <- coef(lasso.mod)
+Coefs[which(myCoefs != 0 ) ] 
+Coefs@Dimnames[[1]][which(Coefs != 0 ) ]
+Results <- data.frame(
+  features = Coefs@Dimnames[[1]][ which(Coefs != 0 ) ], #intercept included
+  coefs    = Coefs              [ which(Coefs != 0 ) ]  #intercept included
+)
+```
+
+# Make predictions on the test data
+```{r}
+x.test <- model.matrix(Stime1 ~., test.data)[,-1]
+predictions <- lasso.mod %>% predict(x.test) %>% as.vector()
+# Model performance metrics
+error <- data.frame(RMSE = RMSE(predictions, test.data$Stime1), Rsquare = R2(predictions, test.data$Stime1))
+```
+
+```{r}
+Results
+error
+```
+
+```{r}
+len<-nrow(myResults)
+len=len-1
+```
+
+Tuning
+```{r}
+set.seed(123)
+## cross validation ans hypertuning
+#set.seed(446098)
+# grid search across 
+cv_glmnet <- train(
+  x = x,
+  y = y,
+  method = "glmnet",
+  preProc = c("zv", "center", "scale"),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+
+cv_glmnet$results %>%
+  filter(alpha == alpha, lambda == lambda)
+
+ggplot(cv_glmnet)
+```
+
+```{r}
+pred <- predict(cv_glmnet, x)
+# compute RMSE of transformed predicted
+RMSE(pred, y)
+```
+## plottong importance vs variance
+```{r}
+vip(cv_glmnet, num_features = len, geom = "point")
+```
+
+```{r}
+df2<- Results[-c(1),]
+```
+## plotting teh coefficients
+```{r}
+theme_set(theme_grey())
+#df2$features <- rownames(df2) 
+df$type <- ifelse(df$coefs < 0, "Negative", "Positive")
+
+df <- df[order(df$coefs), ] #Ascending sort on Z Score
+df$features <- factor(df$features, levels = df$features)
+
+ggplot(df, aes(x=features, y=coefs)) +
+  geom_bar(stat='identity', aes(fill=type), width=.5) +
+  scale_fill_manual(values=c("#006666","#076089")) +
+  #scale_fill_viridis_d() +
+  labs( title= "ENN Coefficients", x = "Features", y="Coefficients") +
+  coord_flip()
+
+```
+
+

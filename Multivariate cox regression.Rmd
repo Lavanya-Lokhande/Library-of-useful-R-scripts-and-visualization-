@@ -1,0 +1,67 @@
+---
+title: "Multivriate Cox regression"
+author: "Lavanya Lokhande"
+date: "3/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+setting directory
+```{r}
+setwd("XXX")
+```
+
+calling libraries
+```{r}
+library(survcomp)
+library(survival)
+library(ggplot2)
+library(purrr)
+source("http://peterhaschke.com/Code/multiplot.R")
+```
+
+INPUT FILE - 
+Column 1 - Patient ID
+Column 2 - Event or status
+Column 3 - Survival time, in the following script it is given as "time"
+Column 4 and beyond - all the variables to check for cox
+Row represents all samples with Row 1 being the column headers
+
+```{r}
+# Setup
+args <- commandArgs(trailingOnly = TRUE)
+
+## If you run from the commandline
+##datafile <- args[1]
+
+## If you run within R
+##datafile <- 'example-data.csv.csv'
+
+datafile <- 'OS_COMBAT_43.csv'
+
+data<-read.table(datafile, header=T, sep=",", dec=".", na.strings = "NA")
+## if you problem with calling the file, check the 'sep' in the above line
+
+#
+write.table(c(), file="multivariate cox_coxRes.csv", row.names=FALSE, col.names=FALSE)
+
+
+ID<-data[1]
+os<-data[3]
+event<- data[2]
+time<- as.numeric(as.character(unlist(os[1])))
+status<- as.numeric(as.character(unlist(event[1])))
+```
+
+for the multivariate cox the calling function is the same, you simply need to call all variables with a "+" 
+```{r}
+res.cox <- coxph(Surv(time, status) ~ Var1 + Var2 + Var3 + ........, data =  data)
+
+print(summary(res.cox))
+
+#write.delim(data2, append=TRUE, file="multi_coxRes-OS_ComBat-SD.csv", row.names=FALSE, col.names=FALSE)
+```
+
